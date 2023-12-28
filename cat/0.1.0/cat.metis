@@ -1,0 +1,5 @@
+import paths
+
+for file in programArgs
+    print(paths.readText(file))
+end

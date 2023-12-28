@@ -1,0 +1,128 @@
+import libapm
+import paths
+import json
+
+let INSTALLED = { "sf-dos" = os.version() }
+
+fn libapm.versionMatches(version, pattern)
+    let v = version.split(".")
+    let p = pattern.split(".")
+    while v.hasNext() and p.hasNext()
+        if v.next() != p.next()
+            return false
+        end
+    end
+    return true
+end
+
+fn libapm.installPackage(name, version)
+    print("Installing " + name + " version " + version + "...")
+    print("Obtaining package info...")
+    let vinfo = libapm.getFile(name, version, "vinfo.json")
+    if vinfo is null
+        raise error ValueError("Package " + name + " version " + version + " does not exist")
+    end
+    vinfo = json.parse(vinfo.decode())
+
+    print("Installing dependencies...")
+    let deps = vinfo.getOrDefault("dependencies", {})
+    for dep in deps.keys()
+        let depVersion = deps[dep]
+        if dep in INSTALLED
+            if libapm.versionMatches(INSTALLED[dep], depVersion)
+                print("Dependency " + dep + " already installed")
+            else
+                raise error DependencyError(
+                    "Dependency " + dep + " is already installed but is not the correct version: " +
+                    "installed " + INSTALLED[dep] + " but requires " + depVersion
+                )
+            end
+        else
+            let depVersions = libapm.getVersions(dep)
+            for v in depVersions
+                if libapm.versionMatches(v, depVersion)
+                    libapm.installPackage(dep, v)
+                    break
+                end
+            end
+            if dep not in INSTALLED
+                raise error DependencyError("Cannot find dependency " + dep + " version " + depVersion)
+            end
+        end
+    end
+
+    print("Downloading bin...")
+    let bin = vinfo.getOrDefault("bin", [])
+    for b in bin
+        let src = libapm.getFile(name, version, b)
+        if src is null
+            raise error ValueError("Package " + name + " version " + version + " does not contain " + b)
+        end
+        paths.writeAll("/bin/" + b, src)
+        print("Installed " + b)
+    end
+
+    print("Downloading lib...")
+    let lib = vinfo.getOrDefault("lib", [])
+    let libDest = "/lib/" + name + "/"
+    for l in lib
+        if not paths.exists(libDest)
+            paths.createDir(libDest)
+        end
+        let src = libapm.getFile(name, version, l)
+        if src is null
+            raise error ValueError("Package " + name + " version " + version + " does not contain " + l)
+        end
+        paths.writeAll(libDest + l, src)
+        print("Installed " + l)
+    end
+
+    print("Downloading include...")
+    let include = vinfo.getOrDefault("include", [])
+    for i in include
+        let src = libapm.getFile(name, version, i)
+        if src is null
+            raise error ValueError("Package " + name + " version " + version + " does not contain " + i)
+        end
+        paths.writeAll("/include/" + i, src)
+        print("Installed " + i)
+    end
+
+    let postInstall = vinfo.getOrDefault("postInstall", null)
+    if postInstall is not null
+        print("Running post install script...")
+        let src = libapm.getFile(name, version, postInstall)
+        if src is null
+            raise error ValueError("Package " + name + " version " + version + " does not contain " + postInstall)
+        end
+        loadChunk(postInstall, src.decode())()
+    end
+
+    INSTALLED[name] = version
+
+    print("Installed " + name + " version " + version)
+end
+
+if paths.exists("/etc/apm-installed")
+    let lines = paths.readText("/etc/apm-installed").split("\n")
+    for line in lines
+        let parts = line.split(" ")
+        INSTALLED[parts[0]] = parts[1]
+    end
+end
+
+import os
+
+os.addShutdownHook(fn()
+    let stream = paths.openWrite("/etc/apm-installed")
+    do
+        for name in INSTALLED.keys()
+            stream.write(name.encode())
+            stream.write(' ')
+            stream.write(INSTALLED[name].encode())
+            stream.write('\n')
+        end
+    finally
+        stream.close()
+    end
+end)

@@ -1,0 +1,75 @@
+import os
+import paths
+
+let notLoop = programArgs.getOrDefault(0, null) != "--loop"
+
+let BUILTINS = {}
+
+fn BUILTINS.echo(args)
+    let out = string.builder()
+    for i in args
+        out.append(i)
+        out.append(" ")
+    end
+    print(str(out))
+end
+
+fn BUILTINS.cd(args)
+    if args.size() == 0
+        os.setCwd("/")
+    else
+        os.setCwd(args[0])
+    end
+end
+
+fn BUILTINS.ls(args)
+    let dir = os.getCwd()
+    if args.size() > 0
+        dir = args[0]
+    end
+    let files = paths.listDir(dir)
+    for i in files
+        print(i)
+    end
+end
+
+fn BUILTINS.shutdown(args)
+    os.shutdown()
+end
+
+while true
+    let cwd = os.getCwd()
+    let inp = input("<grey>[" + cwd + "]$ ")
+    if inp.size() == 0
+        continue
+    end
+
+    print("<grey>" + inp)
+
+    let split = []
+    let builder = string.builder()
+    let inString = false
+    for i in inp
+        if i == " " and not inString
+            split.append(str(builder))
+            builder = string.builder()
+        elif i == "\""
+            inString = not inString
+        else
+            builder.append(i)
+        end
+    end
+    split.append(str(builder))
+
+    let cmd = split[0]
+    let args = split.slice(1)
+    do
+        if cmd in BUILTINS
+            BUILTINS[cmd](args)
+        else
+            os.system(cmd, args)
+        end
+    except e = ValueError
+        printErr(e.message)
+    end
+end

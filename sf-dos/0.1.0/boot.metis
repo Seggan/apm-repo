@@ -1,0 +1,139 @@
+print("Starting SF-DOS...")
+
+import os
+
+let SHUTDOWN_HOOKS = []
+
+fn os.addShutdownHook(hook)
+    SHUTDOWN_HOOKS.append(hook)
+end
+
+let SHUTDOWN = false
+
+fn os.shutdown()
+    SHUTDOWN = true
+end
+
+import paths
+
+if not paths.exists("/home")
+    printErr("Existing installation not found, installing...")
+
+    paths.createDir("/lib")
+    paths.createDir("/bin")
+    paths.createDir("/include")
+    paths.createDir("/local")
+    paths.createDir("/home")
+    paths.createDir("/etc")
+
+    import libapm
+
+    let version = libapm.getVersions("sf-dos").first()
+    paths.writeText("/etc/version", version)
+    paths.writeAll("/boot/apm.metis", libapm.getFile("sf-dos", version, "apm.metis"))
+
+    fn os.version() = version
+
+    executeFile("/boot/apm.metis")
+
+    let toInstall = ["apm", "sh", "cat"]
+    for package in toInstall
+        let latest = libapm.getVersions(package).first()
+        libapm.installPackage(package, latest)
+    end
+else
+    let version = paths.readText("/etc/version")
+    fn os.version() = version
+
+    executeFile("/boot/apm.metis")
+end
+
+let ENV = {}
+
+if paths.exists("/etc/env")
+    let env = paths.readText("/etc/env")
+    for line in env.split("\n")
+        let parts = line.split("=")
+        ENV[parts[0]] = parts[1]
+    end
+else
+    ENV.PATH = "/bin"
+end
+
+fn os.getEnv(key)
+    return ENV[key]
+end
+
+fn os.setEnv(key, value)
+    ENV[key] = value
+end
+
+let threads = []
+
+fn os.startThread(func)
+    let thread = coroutine.create(func)
+    threads.append(thread)
+end
+
+let global programArgs = []
+
+fn os.system(command, args)
+    args ?:= []
+
+    let program = null
+    if paths.isAbsolute(command) and paths.isFile(command)
+        program = command
+    else
+        for path in ENV.PATH.split(":")
+            let fullPath = path + "/" + command + ".metis"
+            if paths.isFile(fullPath)
+                program = fullPath
+                break
+            end
+        end
+    end
+
+    if program is null
+        raise error ValueError("Program not found: " + command) : { "command" = command }
+    end
+
+    let oldArgs = programArgs
+    programArgs = args
+    executeFile(program)
+    programArgs = oldArgs
+end
+
+os.startThread(fn()
+    os.system("sh", ["--loop"])
+end)
+
+print("Welcome to SF-DOS!")
+
+let i = 0
+while not SHUTDOWN
+    let thread = threads[i]
+    if thread.step() == "finished"
+        threads.removeAt(i)
+    else
+        i += 1
+        i %= threads.size()
+    end
+end
+
+print("Shutting down...")
+
+for hook in SHUTDOWN_HOOKS
+    hook()
+end
+
+let stream = paths.openWrite("/etc/env")
+do
+    for key in ENV.keys()
+        stream.write(key.encode())
+        stream.write('=')
+        stream.write(ENV[key].encode())
+        stream.write('\n')
+    end
+finally
+    stream.close()
+end
