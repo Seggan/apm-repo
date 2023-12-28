@@ -1,12 +1,13 @@
 import libapm
 import paths
 import json
+import os
 
 let INSTALLED = { "sf-dos" = os.version() }
 
 fn libapm.versionMatches(version, pattern)
-    let v = version.split(".")
-    let p = pattern.split(".")
+    let v = iter(version.split("."))
+    let p = iter(pattern.split("."))
     while v.hasNext() and p.hasNext()
         if v.next() != p.next()
             return false

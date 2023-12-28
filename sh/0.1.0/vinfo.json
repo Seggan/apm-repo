@@ -1,6 +1,6 @@
 {
   "bin": ["sh.metis"],
   "dependencies": {
-    "sf-dos": "0"
+    "sf-dos": "0.1"
   }
 }

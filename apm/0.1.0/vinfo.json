@@ -1,3 +1,6 @@
 {
-  "bin": ["apm.metis"]
+  "bin": ["apm.metis"],
+  "dependencies": {
+    "sf-dos": "0.1"
+  }
 }
