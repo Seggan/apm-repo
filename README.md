@@ -1,7 +1,7 @@
 # apm-repo
 Repository for the APM tool in the Automation Slimefun addon.
 
-# Project structure
+## Project structure
 
 Example project structure:
 ```
